@@ -15,6 +15,7 @@ import os
 import re
 import json
 import html
+import time
 from pathlib import Path
 
 import requests
@@ -77,13 +78,13 @@ def save_state(state):
 # ---------------- Notify ----------------
 # Uses ntfy.sh if NTFY_TOPIC is set (simplest, no account). Otherwise uses
 # Telegram if both TELEGRAM_* are set. Set whichever ONE you prefer as a secret.
-def notify(title, body, url=""):
+def notify(title, body, url="", priority="high"):
     # ---- ntfy.sh path (recommended for beginners) ----
     ntfy = os.environ.get("NTFY_TOPIC", "").strip()
     if ntfy:
         safe_title = title.encode("ascii", "ignore").decode().strip() or "Alert"
         data = (body + (("\n" + url) if url else "")).encode("utf-8")
-        headers = {"Title": safe_title, "Priority": "high", "Tags": "rocket"}
+        headers = {"Title": safe_title, "Priority": priority, "Tags": "rocket"}
         if url:
             headers["Click"] = url
         try:
@@ -109,6 +110,15 @@ def notify(title, body, url=""):
         return
 
     print("[notify] (no notifier configured) ->", title, body, url)
+
+
+def alert(title, body, url="", times=5, gap=4):
+    """Insistent alert: a burst of max-priority pushes, ~gap seconds apart,
+    so it keeps buzzing and is hard to miss/sleep through."""
+    for i in range(times):
+        notify(title, body, url, priority="urgent")
+        if i < times - 1:
+            time.sleep(gap)
 
 
 # ---------------- Detectors ----------------
@@ -188,6 +198,14 @@ def main():
     product_url = state.get("product_url", "")
     notified = set(state.get("notified", []))
 
+    # Re-buzz: if a recent alert hasn't been "used up", re-send it on this run too
+    # (so even if you slept through the first burst, it nags you again ~every 15 min).
+    ra = state.get("realert")
+    if ra and ra.get("left", 0) > 0:
+        alert(ra["title"], ra["body"], ra.get("url", ""))
+        ra["left"] -= 1
+        state["realert"] = ra
+
     # Try to discover a real product URL if we don't have one yet
     if not product_url:
         product_url = find_amazon_product() or find_flipkart_product()
@@ -200,9 +218,12 @@ def main():
         new_news = [(t, l) for (t, l) in news if l not in notified]
         link = product_url or (new_news[0][1] if new_news else "")
         if link:
-            notify("🚀 Fitbit Air — India",
-                   "Looks like the Fitbit Air just went live / was announced "
-                   "for India. Earliest link I found:", link)
+            title = "🚀 Fitbit Air — India"
+            body = ("Looks like the Fitbit Air just went live / was announced "
+                    "for India. Earliest link I found:")
+            alert(title, body, link)
+            state["realert"] = {"title": title, "body": body,
+                                "url": link, "left": 3}
             for _, l in new_news:
                 notified.add(l)
             state["stage"] = stage = 1
@@ -210,8 +231,11 @@ def main():
     # Stage 2: listing is actually buyable
     if 1 <= stage < 2 and product_url:
         if is_buyable(product_url) is True:
-            notify("🟢 Fitbit Air — BUYABLE NOW (India)",
-                   "In stock / Add to Cart is live. Go:", product_url)
+            title = "🟢 Fitbit Air — BUYABLE NOW (India)"
+            body = "In stock / Add to Cart is live. Go:"
+            alert(title, body, product_url)
+            state["realert"] = {"title": title, "body": body,
+                                "url": product_url, "left": 3}
             state["stage"] = stage = 2
 
     state["notified"] = list(notified)
