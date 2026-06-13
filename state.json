@@ -1,5 +1,11 @@
 {
-  "stage": 0,
-  "product_url": "",
-  "notified": []
+  "stage": 1,
+  "product_url": "https://www.amazon.in/dp/B0B75RC9C3",
+  "notified": [],
+  "realert": {
+    "title": "\ud83d\ude80 Fitbit Air \u2014 India",
+    "body": "Looks like the Fitbit Air just went live / was announced for India. Earliest link I found:",
+    "url": "https://www.amazon.in/dp/B0B75RC9C3",
+    "left": 3
+  }
 }
